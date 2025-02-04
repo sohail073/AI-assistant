@@ -1,6 +1,10 @@
 import speech_recognition as sr
 import pyttsx3
 import google.generativeai as genai
+import pandas as pd
+import os
+import openpyxl  # Add this import
+import re  # Add this import
 
 def speech_to_text():
     # Initialize recognizer
@@ -46,16 +50,127 @@ def text_to_speech(text):
     engine.say(text)
     engine.runAndWait()
 
+def extract_numeric_value(text):
+    match = re.search(r'\d+', text)
+    return match.group() if match else None
+
+def is_positive_response(response):
+    positive_responses = ["yes", "yeah", "yup", "sure", "i do", "i have"]
+    return any(phrase in response.lower() for phrase in positive_responses)
+
+def suggest_plans(budget):
+    # Dummy plans for demonstration purposes
+    plans = [
+        {"Destination": "Paris", "Budget": "2000", "Description": "A romantic getaway in Paris."},
+        {"Destination": "New York", "Budget": "1500", "Description": "Explore the bustling city of New York."},
+        {"Destination": "Tokyo", "Budget": "2500", "Description": "Experience the vibrant culture of Tokyo."}
+    ]
+    suggested_plans = [plan for plan in plans if int(plan["Budget"]) <= int(budget)]
+    return suggested_plans
+
+def gather_customer_info():
+    info = {}
+    questions = {
+        "Name": "May I have your name, please?",
+        "Contact_number": "Can you provide your contact number?",
+        "Destination": "Where would you like to travel?",
+        "Number_of_people": "How many people will be traveling?",
+        "Budget": "What is your budget for this trip?"
+    }
+    
+    # Greet and introduce services
+    text_to_speech("Welcome to our travel agency. We offer flight bookings, hotel inquiries, and travel packages.")
+    print("Welcome to our travel agency. We offer flight bookings, hotel inquiries, and travel packages.")
+    
+    # Identify user intent
+    text_to_speech("What do you need help with today?")
+    print("What do you need help with today?")
+    response = speech_to_text()
+    if response:
+        info["Intent"] = response
+    else:
+        text_to_speech("Sorry, I didn't catch that. Could you please repeat?")
+        print("Sorry, I didn't catch that. Could you please repeat?")
+        response = speech_to_text()
+        if response:
+            info["Intent"] = response
+        else:
+            text_to_speech("Sorry, I couldn't understand you. Let's move to the next question.")
+            print("Sorry, I couldn't understand you. Let's move to the next question.")
+            info["Intent"] = "N/A"
+    
+    # Assist with booking or offer recommendations
+    if is_positive_response(info["Intent"]):
+        for key, question in questions.items():
+            text_to_speech(question)
+            print(question)
+            response = speech_to_text()
+            if response:
+                info[key] = response
+            else:
+                text_to_speech("Sorry, I didn't catch that. Could you please repeat?")
+                print("Sorry, I didn't catch that. Could you please repeat?")
+                response = speech_to_text()
+                if response:
+                    info[key] = response
+                else:
+                    text_to_speech("Sorry, I couldn't understand you. Let's move to the next question.")
+                    print("Sorry, I couldn't understand you. Let's move to the next question.")
+                    info[key] = "N/A"
+    else:
+        text_to_speech("I have some suggestions for you based on your budget.")
+        print("I have some suggestions for you based on your budget.")
+        text_to_speech("What is your budget for this trip?")
+        print("What is your budget for this trip?")
+        budget_response = speech_to_text()
+        budget_value = extract_numeric_value(budget_response) if budget_response else None
+        if budget_value:
+            info["Budget"] = budget_value
+            suggested_plans = suggest_plans(budget_value)
+            if suggested_plans:
+                for plan in suggested_plans:
+                    text_to_speech(f"{plan['Description']} to {plan['Destination']} within a budget of {plan['Budget']} dollars.")
+                    print(f"{plan['Description']} to {plan['Destination']} within a budget of {plan['Budget']} dollars.")
+                    info["Destination"] = plan["Destination"]
+                    break  # Suggest only one plan for simplicity
+            else:
+                text_to_speech("Sorry, we don't have any plans within your budget.")
+                print("Sorry, we don't have any plans within your budget.")
+        else:
+            text_to_speech("Sorry, I couldn't understand your budget. Let's move to the next question.")
+            print("Sorry, I couldn't understand your budget. Let's move to the next question.")
+            info["Budget"] = "N/A"
+        
+        for key in ["Name", "Contact_number", "Number_of_people"]:
+            text_to_speech(questions[key])
+            print(questions[key])
+            response = speech_to_text()
+            if response:
+                info[key] = response
+            else:
+                text_to_speech("Sorry, I didn't catch that. Could you please repeat?")
+                print("Sorry, I didn't catch that. Could you please repeat?")
+                response = speech_to_text()
+                if response:
+                    info[key] = response
+                else:
+                    text_to_speech("Sorry, I couldn't understand you. Let's move to the next question.")
+                    print("Sorry, I couldn't understand you. Let's move to the next question.")
+                    info[key] = "N/A"
+    
+    return info
+
+def save_to_file(info):
+    file_path = "user_info.txt"
+    with open(file_path, "a") as file:
+        file.write(",".join(info.values()) + "\n")
+    print("Customer information saved successfully.")
+
 if __name__ == "__main__":
-    # Welcome message
-    welcome_message = "Welcome to the travel agency customer service. How can I assist you with your travel plans today?"
-    print(welcome_message)
-    text_to_speech(welcome_message)
     
     while True:
-        input_text = speech_to_text()
-        if input_text:
-            response_text = get_response_from_gemini(input_text)
-            if response_text:
-                print("Response: " + response_text)
-                text_to_speech(response_text)
+        customer_info = gather_customer_info()
+        save_to_file(customer_info)
+        text_to_speech("Thank you for providing your information. We will get back to you shortly.")
+        print("Thank you for providing your information. We will get back to you shortly.")
+        break  # Remove or modify this line if you want to continue gathering information in a loop
