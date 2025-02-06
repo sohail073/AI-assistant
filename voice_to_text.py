@@ -1,181 +1,200 @@
 import speech_recognition as sr
 import pyttsx3
-import google.generativeai as genai
-import pandas as pd
 import os
-import openpyxl  # Add this import
-import re  # Add this import
-from dotenv import load_dotenv  # Add this import
+from dotenv import load_dotenv
+import json
+from datetime import datetime
+import time
 
-# Load environment variables from .env file
 load_dotenv()
 
-def speech_to_text():
-    # Initialize recognizer
-    recognizer = sr.Recognizer()
+class VoiceEngine:
+    def __init__(self):
+        self.engine = pyttsx3.init()
+        self.engine.setProperty('rate', 150)  # Slower rate for clarity
+        self.engine.setProperty('volume', 0.9)  # Slightly lower volume
+        self.recognizer = sr.Recognizer()
 
-    # Use the microphone as source for input
-    with sr.Microphone() as source:
-        print("Please speak something...")
-        recognizer.adjust_for_ambient_noise(source, duration=1)  # Adjust for ambient noise
-        print("Listening...")
-        # Listen for the first phrase and extract it into audio data
-        try:
-            audio_data = recognizer.listen(source, timeout=10, phrase_time_limit=20)
-            print("Recognizing...")
-            # Recognize speech using Google Web Speech API
-            text = recognizer.recognize_google(audio_data)
-            print("You said: " + text)
-            return text
-        except sr.WaitTimeoutError:
-            print("Listening timed out while waiting for phrase to start")
-        except sr.UnknownValueError:
-            print("Google Web Speech API could not understand the audio")
-        except sr.RequestError as e:
-            print("Could not request results from Google Web Speech API; {0}".format(e))
-    return None
+    def speak(self, text, pause=1):
+        print(f"\nAgent: {text}")
+        self.engine.say(text)
+        self.engine.runAndWait()
+        time.sleep(pause)  # Natural pause after speaking
 
-def get_response_from_gemini(input_text):
-    # Configure the Gemini API
-    api_key = os.getenv("GEMINI_API_KEY")
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    
-    try:
-        # Add context to the input text to specify the travel agency role and request a concise, casual response
-        prompt = f"As a customer service representative of a travel agency, respond concisely and casually to the following query: {input_text}"
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        print(f"Error: Could not get response from API - {e}")
-        return None
+    def listen(self, timeout=8):
+        with sr.Microphone() as source:
+            print("\nListening...")
+            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            try:
+                audio = self.recognizer.listen(source, timeout=timeout)
+                text = self.recognizer.recognize_google(audio)
+                print(f"Customer: {text}")
+                return text.lower()
+            except (sr.UnknownValueError, sr.RequestError, sr.WaitTimeoutError):
+                return None
 
-def text_to_speech(text):
-    engine = pyttsx3.init()
-    engine.say(text)
-    engine.runAndWait()
-
-def extract_numeric_value(text):
-    match = re.search(r'\d+', text)
-    return match.group() if match else None
-
-def is_positive_response(response):
-    positive_responses = ["yes", "yeah", "yup", "sure", "i do", "i have"]
-    return any(phrase in response.lower() for phrase in positive_responses)
-
-def suggest_plans(budget):
-    # Dummy plans for demonstration purposes
-    plans = [
-        {"Destination": "Paris", "Budget": "2000", "Description": "A romantic getaway in Paris."},
-        {"Destination": "New York", "Budget": "1500", "Description": "Explore the bustling city of New York."},
-        {"Destination": "Tokyo", "Budget": "2500", "Description": "Experience the vibrant culture of Tokyo."}
-    ]
-    suggested_plans = [plan for plan in plans if int(plan["Budget"]) <= int(budget)]
-    return suggested_plans
-
-def gather_customer_info():
-    info = {}
-    questions = {
-        "Name": "May I have your name, please?",
-        "Contact_number": "Can you provide your contact number?",
-        "Destination": "Where would you like to travel?",
-        "Number_of_people": "How many people will be traveling?",
-        "Budget": "What is your budget for this trip?"
-    }
-    
-    # Greet and introduce services
-    text_to_speech("Welcome to our travel agency. We offer flight bookings, hotel inquiries, and travel packages.")
-    print("Welcome to our travel agency. We offer flight bookings, hotel inquiries, and travel packages.")
-    
-    # Identify user intent
-    text_to_speech("What do you need help with today?")
-    print("What do you need help with today?")
-    response = speech_to_text()
-    if response:
-        info["Intent"] = response
-    else:
-        text_to_speech("Sorry, I didn't catch that. Could you please repeat?")
-        print("Sorry, I didn't catch that. Could you please repeat?")
-        response = speech_to_text()
-        if response:
-            info["Intent"] = response
-        else:
-            text_to_speech("Sorry, I couldn't understand you. Let's move to the next question.")
-            print("Sorry, I couldn't understand you. Let's move to the next question.")
-            info["Intent"] = "N/A"
-    
-    # Assist with booking or offer recommendations
-    if is_positive_response(info["Intent"]):
-        for key, question in questions.items():
-            text_to_speech(question)
-            print(question)
-            response = speech_to_text()
-            if response:
-                info[key] = response
-            else:
-                text_to_speech("Sorry, I didn't catch that. Could you please repeat?")
-                print("Sorry, I didn't catch that. Could you please repeat?")
-                response = speech_to_text()
-                if response:
-                    info[key] = response
-                else:
-                    text_to_speech("Sorry, I couldn't understand you. Let's move to the next question.")
-                    print("Sorry, I couldn't understand you. Let's move to the next question.")
-                    info[key] = "N/A"
-    else:
-        text_to_speech("I have some suggestions for you based on your budget.")
-        print("I have some suggestions for you based on your budget.")
-        text_to_speech("What is your budget for this trip?")
-        print("What is your budget for this trip?")
-        budget_response = speech_to_text()
-        budget_value = extract_numeric_value(budget_response) if budget_response else None
-        if budget_value:
-            info["Budget"] = budget_value
-            suggested_plans = suggest_plans(budget_value)
-            if suggested_plans:
-                for plan in suggested_plans:
-                    text_to_speech(f"{plan['Description']} to {plan['Destination']} within a budget of {plan['Budget']} dollars.")
-                    print(f"{plan['Description']} to {plan['Destination']} within a budget of {plan['Budget']} dollars.")
-                    info["Destination"] = plan["Destination"]
-                    break  # Suggest only one plan for simplicity
-            else:
-                text_to_speech("Sorry, we don't have any plans within your budget.")
-                print("Sorry, we don't have any plans within your budget.")
-        else:
-            text_to_speech("Sorry, I couldn't understand your budget. Let's move to the next question.")
-            print("Sorry, I couldn't understand your budget. Let's move to the next question.")
-            info["Budget"] = "N/A"
+class TravelAgent:
+    def __init__(self):
+        self.voice = VoiceEngine()
+        self.lead_info = {}
         
-        for key in ["Name", "Contact_number", "Number_of_people"]:
-            text_to_speech(questions[key])
-            print(questions[key])
-            response = speech_to_text()
-            if response:
-                info[key] = response
-            else:
-                text_to_speech("Sorry, I didn't catch that. Could you please repeat?")
-                print("Sorry, I didn't catch that. Could you please repeat?")
-                response = speech_to_text()
-                if response:
-                    info[key] = response
-                else:
-                    text_to_speech("Sorry, I couldn't understand you. Let's move to the next question.")
-                    print("Sorry, I couldn't understand you. Let's move to the next question.")
-                    info[key] = "N/A"
-    
-    return info
+        # Sample travel deals
+        self.hot_deals = {
+            "budget": {
+                "destination": "Bali",
+                "price": 899,
+                "includes": "flights and 4-star hotel"
+            },
+            "standard": {
+                "destination": "Dubai",
+                "price": 1499,
+                "includes": "flights, 5-star hotel, and desert safari"
+            },
+            "luxury": {
+                "destination": "Maldives",
+                "price": 2499,
+                "includes": "business class flights and water villa"
+            }
+        }
 
-def save_to_file(info):
-    file_path = "user_info.txt"
-    with open(file_path, "a") as file:
-        file.write(",".join(info.values()) + "\n")
-    print("Customer information saved successfully.")
+    def is_positive_response(self, response):
+        if not response:
+            return False
+        positive_words = ['yes', 'yeah', 'sure', 'okay', 'fine', 'yep', 'yup', 'interested']
+        return any(word in response for word in positive_words)
+
+    def handle_introduction(self):
+        self.voice.speak("Hi! This is Sarah from Dream Vacations! We're offering exclusive travel deals this season. Would you like to hear about them?")
+        response = self.voice.listen()
+        
+        if self.is_positive_response(response):
+            return self.handle_travel_inquiry()
+        else:
+            self.voice.speak("No worries! Would you like me to send you travel deals via WhatsApp or Email instead?")
+            contact_preference = self.voice.listen()
+            if contact_preference:
+                self.lead_info['contact_preference'] = contact_preference
+                self.voice.speak("Great! Our travel expert will reach out to you soon with our best deals. Have a wonderful day!")
+            return False
+
+    def handle_travel_inquiry(self):
+        # Destination inquiry
+        self.voice.speak("Great! Do you already have a destination in mind, or would you like some suggestions?")
+        response = self.voice.listen()
+        
+        if response and 'suggest' in response:
+            return self.suggest_destinations()
+        elif response:
+            self.lead_info['preferred_destination'] = response
+            return self.collect_travel_details()
+        
+        return self.suggest_destinations()
+
+    def suggest_destinations(self):
+        self.voice.speak("Based on popular choices, I can suggest three amazing destinations. We have Bali with pristine beaches, Dubai for luxury shopping and desert adventures, or the Maldives for ultimate relaxation. Which interests you most?")
+        response = self.voice.listen()
+        
+        if response:
+            self.lead_info['interested_destination'] = response
+            return self.collect_travel_details()
+        return False
+
+    def collect_travel_details(self):
+        questions = {
+            'travel_dates': "When do you plan to travel?",
+            'travelers': "How many people will be traveling with you?",
+            'budget': "What is your preferred budget for this trip?"
+        }
+
+        for key, question in questions.items():
+            self.voice.speak(question)
+            response = self.voice.listen()
+            if response:
+                self.lead_info[key] = response
+            else:
+                return False
+
+        return self.present_offers()
+
+    def present_offers(self):
+        # Simplified deal matching based on collected info
+        deal = self.hot_deals['standard']  # Default to standard deal
+        
+        self.voice.speak(f"I found a great deal for {deal['destination']} at ${deal['price']} including {deal['includes']}. Shall I book it for you?")
+        response = self.voice.listen()
+        
+        if self.is_positive_response(response):
+            return self.handle_booking_details()
+        else:
+            self.voice.speak("Would you like to hear about other available deals?")
+            response = self.voice.listen()
+            if self.is_positive_response(response):
+                return self.present_alternative_offers()
+        return False
+
+    def handle_booking_details(self):
+        questions = [
+            "Would you prefer economy, business, or first-class flights?",
+            "Do you need hotel accommodations as well?",
+            "Would you like to add travel insurance or visa assistance to your trip?",
+            "Are you interested in exclusive tour packages for your destination?"
+        ]
+
+        for question in questions:
+            self.voice.speak(question)
+            response = self.voice.listen()
+            if response:
+                self.lead_info[question] = response
+            else:
+                break
+
+        return self.handle_closing()
+
+    def present_alternative_offers(self):
+        self.voice.speak("We also have special deals for Dubai and the Maldives. Would you like to hear about these destinations?")
+        response = self.voice.listen()
+        
+        if self.is_positive_response(response):
+            return self.handle_booking_details()
+        return self.handle_closing()
+
+    def handle_closing(self):
+        self.voice.speak("Shall I send these details to you via WhatsApp, Email, or SMS?")
+        response = self.voice.listen()
+        
+        if response:
+            self.voice.speak("Would you like to speak with a travel expert for more personalized options?")
+            expert_response = self.voice.listen()
+            
+            if self.is_positive_response(expert_response):
+                self.voice.speak("I'll have our travel expert call you back within 2 hours. Thank you for your time!")
+                self.lead_info['requires_callback'] = True
+            else:
+                self.voice.speak("Would you prefer I call you back at a more convenient time?")
+                callback_response = self.voice.listen()
+                if self.is_positive_response(callback_response):
+                    self.lead_info['callback_requested'] = True
+                    self.voice.speak("Perfect! Our travel expert will call you back. Have a great day!")
+                else:
+                    self.voice.speak("Thank you for your time. Have a wonderful day!")
+        else:
+            self.voice.speak("Thank you for your time. Have a great day!")
+        
+        self.save_lead()
+        return False
+
+    def save_lead(self):
+        self.lead_info['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open('travel_leads.json', 'a') as f:
+                json.dump(self.lead_info, f)
+                f.write('\n')
+        except Exception as e:
+            print(f"Error saving lead: {e}")
+
+def main():
+    agent = TravelAgent()
+    agent.handle_introduction()
 
 if __name__ == "__main__":
-    
-    while True:
-        customer_info = gather_customer_info()
-        save_to_file(customer_info)
-        text_to_speech("Thank you for providing your information. We will get back to you shortly.")
-        print("Thank you for providing your information. We will get back to you shortly.")
-        break  # Remove or modify this line if you want to continue gathering information in a loop
+    main()
