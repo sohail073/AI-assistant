@@ -5,6 +5,10 @@ import pandas as pd
 import os
 import openpyxl  # Add this import
 import re  # Add this import
+from dotenv import load_dotenv  # Add this import
+
+# Load environment variables from .env file
+load_dotenv()
 
 def speech_to_text():
     # Initialize recognizer
@@ -33,7 +37,8 @@ def speech_to_text():
 
 def get_response_from_gemini(input_text):
     # Configure the Gemini API
-    genai.configure(api_key="AIzaSyA4naNwbP9-l9EkOsZ5p64udKa7gon-ClE")
+    api_key = os.getenv("GEMINI_API_KEY")
+    genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
     
     try:
